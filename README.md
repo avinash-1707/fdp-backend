@@ -4,21 +4,6 @@ A production-grade backend for a finance dashboard system with role-based access
 
 ---
 
-## Tech Stack
-
-| Concern          | Choice                   |
-| ---------------- | ------------------------ |
-| Language         | TypeScript (strict mode) |
-| Runtime          | Node.js                  |
-| Framework        | Express.js v5            |
-| Database         | PostgreSQL (Neon)        |
-| ORM              | Prisma                   |
-| Validation       | Zod                      |
-| Auth             | JWT (jsonwebtoken)       |
-| Password hashing | bcryptjs                 |
-
----
-
 ## Architecture
 
 This project follows a **Modular Monolith** pattern — one deployable process internally divided into self-contained feature modules. Each module owns its routes, controller, service, and repository. Cross-cutting concerns live in dedicated middleware and utility layers.
@@ -37,37 +22,6 @@ Request
 
 ---
 
-## Folder Structure
-
-```
-src/
-├── config/
-│   ├── env.ts           # Zod-validated environment variables (fails fast)
-│   └── database.ts      # Prisma client singleton
-├── modules/
-│   ├── auth/            # Register, login, profile
-│   ├── users/           # User management (admin only)
-│   ├── records/         # Financial records CRUD + filtering
-│   └── dashboard/       # Aggregation and analytics endpoints
-├── middleware/
-│   ├── authenticate.ts  # JWT verification → attaches req.user
-│   ├── authorize.ts     # RBAC guard factory: authorize('ADMIN')
-│   ├── validate.ts      # Zod schema validation for body/query/params
-│   └── errorHandler.ts  # Global error handler (single exit point)
-├── utils/
-│   ├── AppError.ts      # Custom error class with HTTP status codes
-│   ├── apiResponse.ts   # Consistent response shape helpers
-│   ├── jwt.ts           # sign / verify helpers
-│   ├── password.ts      # bcrypt hash / compare
-│   └── pagination.ts    # Page + limit calculation helpers
-├── types/
-│   └── express.d.ts     # Augments Express Request with req.user
-├── app.ts               # Express setup, middleware registration, routes
-└── server.ts            # HTTP server bootstrap + graceful shutdown
-```
-
----
-
 ## Setup
 
 ### Prerequisites
@@ -79,7 +33,7 @@ src/
 
 ```bash
 # 1. Clone and install dependencies
-npm install
+bun install
 
 # 2. Create your environment file
 cp .env.example .env
@@ -102,26 +56,26 @@ openssl rand -hex 32
 
 ```bash
 # Generate Prisma client
-npx prisma generate
+bunx prisma generate
 
-# Push schema to your database (dev/first-run)
-npx prisma db push
+# Push schema to your database (dev / first run)
+bunx prisma db push
 
-# Or use migrations for production
-npx prisma migrate dev --name init
+# OR use migrations for production
+bunx prisma migrate dev --name init
 
-# Seed with sample users and financial records
-npm run db:seed
+# Seed database
+bun run db:seed
 ```
 
 ### Running the server
 
 ```bash
 # Development (hot reload)
-npm run dev
+bun dev
 
 # Production
-npm run build && npm start
+bun build && bun start
 ```
 
 Server starts at: `http://localhost:3000`
@@ -369,11 +323,3 @@ Prisma constraint errors (unique violations, foreign key errors) are caught and 
 **Raw SQL for monthly trends** — The monthly trends endpoint uses `$queryRawUnsafe` with `DATE_TRUNC` because Prisma's `groupBy` does not support date truncation natively. The query is parameterised and safe from injection.
 
 ---
-
-## Optional Enhancements (Not Implemented — Scope Decisions)
-
-- **Refresh tokens** — Current implementation uses long-lived access tokens. A production system would add short-lived access + long-lived refresh token rotation.
-- **Audit log** — A separate `AuditLog` table could track every create/update/delete with who performed the action and when.
-- **Unit tests** — Jest + Supertest integration tests are the logical next step. Service layer tests would use mocked repositories.
-- **OpenAPI / Swagger** — `zod-to-openapi` or `swagger-jsdoc` could generate API docs from existing Zod schemas with minimal effort.
-- **Search on dashboard** — Category-based search could be added to the breakdown endpoint.
