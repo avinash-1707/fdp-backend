@@ -65,7 +65,7 @@ bunx prisma db push
 bunx prisma migrate dev --name init
 
 # Seed database
-bun run db:seed
+bun run db:seedx
 ```
 
 ### Running the server

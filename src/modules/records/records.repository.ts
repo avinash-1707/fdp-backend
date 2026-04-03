@@ -1,58 +1,149 @@
-import { z } from "zod";
-import { RecordType } from "../../generated/prisma/enums";
+import { prisma } from "../../config/database";
+import type { Prisma } from "../../generated/prisma/client";
+import type { RecordType } from "../../generated/prisma/enums";
 
-export const createRecordSchema = z.object({
-  amount: z
-    .number({ error: "Amount is required" })
-    .positive("Amount must be a positive number")
-    .multipleOf(0.01, "Amount can have at most 2 decimal places"),
-  type: z.enum(RecordType, {
-    error: "Type must be INCOME or EXPENSE",
-  }),
-  category: z
-    .string()
-    .min(1, "Category is required")
-    .max(100, "Category must be under 100 characters")
-    .trim(),
-  date: z
-    .string({ error: "Date is required" })
-    .datetime({ message: "Date must be a valid ISO 8601 datetime string" })
-    .or(
-      z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD format"),
-    )
-    .transform((val) => new Date(val)),
-  notes: z
-    .string()
-    .max(500, "Notes must be under 500 characters")
-    .trim()
-    .optional(),
-});
+export interface FindRecordsOptions {
+  page: number;
+  limit: number;
+  userId?: string;
+  type?: RecordType;
+  category?: string;
+  startDate?: Date;
+  endDate?: Date;
+  search?: string;
+  sortBy: "date" | "amount" | "createdAt";
+  sortOrder: "asc" | "desc";
+}
 
-// All fields optional on update
-export const updateRecordSchema = createRecordSchema.partial();
+export interface CreateRecordData {
+  amount: number;
+  type: RecordType;
+  category: string;
+  date: Date;
+  notes?: string;
+  userId: string;
+}
 
-export const listRecordsQuerySchema = z.object({
-  page: z.string().optional(),
-  limit: z.string().optional(),
-  type: z.enum(RecordType).optional(),
-  category: z.string().optional(),
-  startDate: z
-    .string()
-    .datetime()
-    .or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/))
-    .transform((val) => new Date(val))
-    .optional(),
-  endDate: z
-    .string()
-    .datetime()
-    .or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/))
-    .transform((val) => new Date(val))
-    .optional(),
-  search: z.string().optional(),
-  sortBy: z.enum(["date", "amount", "createdAt"]).default("date"),
-  sortOrder: z.enum(["asc", "desc"]).default("desc"),
-});
+export interface UpdateRecordData {
+  amount?: number;
+  type?: RecordType;
+  category?: string;
+  date?: Date;
+  notes?: string | null;
+}
 
-export type CreateRecordInput = z.infer<typeof createRecordSchema>;
-export type UpdateRecordInput = z.infer<typeof updateRecordSchema>;
-export type ListRecordsQuery = z.infer<typeof listRecordsQuerySchema>;
+export class RecordsRepository {
+  private buildWhereClause(
+    options: FindRecordsOptions,
+  ): Prisma.FinancialRecordWhereInput {
+    const { userId, type, category, startDate, endDate, search } = options;
+
+    return {
+      isDeleted: false,
+      ...(userId && { userId }),
+      ...(type && { type }),
+      ...(category && {
+        category: { contains: category, mode: "insensitive" },
+      }),
+      ...(startDate || endDate
+        ? {
+            date: {
+              ...(startDate && { gte: startDate }),
+              ...(endDate && { lte: endDate }),
+            },
+          }
+        : {}),
+      ...(search && {
+        OR: [
+          { category: { contains: search, mode: "insensitive" } },
+          { notes: { contains: search, mode: "insensitive" } },
+        ],
+      }),
+    };
+  }
+
+  async findAll(options: FindRecordsOptions) {
+    const { page, limit, sortBy, sortOrder } = options;
+    const skip = (page - 1) * limit;
+    const where = this.buildWhereClause(options);
+
+    const [records, total] = await Promise.all([
+      prisma.financialRecord.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { [sortBy]: sortOrder },
+        include: {
+          user: { select: { id: true, name: true, email: true } },
+        },
+      }),
+      prisma.financialRecord.count({ where }),
+    ]);
+
+    return { records, total };
+  }
+
+  async findById(id: string) {
+    return prisma.financialRecord.findFirst({
+      where: { id, isDeleted: false },
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+      },
+    });
+  }
+
+  async findByIdAndUserId(id: string, userId: string) {
+    return prisma.financialRecord.findFirst({
+      where: { id, userId, isDeleted: false },
+    });
+  }
+
+  async create(data: CreateRecordData) {
+    return prisma.financialRecord.create({
+      data: {
+        // Prisma accepts number for Decimal columns — the driver handles conversion
+        amount: data.amount as unknown as Prisma.Decimal,
+        type: data.type,
+        category: data.category,
+        date: data.date,
+        notes: data.notes ?? null,
+        userId: data.userId,
+      },
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+      },
+    });
+  }
+
+  async update(id: string, data: UpdateRecordData) {
+    return prisma.financialRecord.update({
+      where: { id },
+      data: {
+        ...(data.amount !== undefined && {
+          amount: data.amount as unknown as Prisma.Decimal,
+        }),
+        ...(data.type !== undefined && { type: data.type }),
+        ...(data.category !== undefined && { category: data.category }),
+        ...(data.date !== undefined && { date: data.date }),
+        ...(data.notes !== undefined && { notes: data.notes }),
+      },
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+      },
+    });
+  }
+
+  async softDelete(id: string) {
+    return prisma.financialRecord.update({
+      where: { id },
+      data: { isDeleted: true },
+    });
+  }
+
+  async existsById(id: string): Promise<boolean> {
+    const record = await prisma.financialRecord.findFirst({
+      where: { id, isDeleted: false },
+    });
+    return record !== null;
+  }
+}
