@@ -15,7 +15,7 @@ import dashboardRoutes from "./modules/dashboard/dashboard.routes";
 
 const app = express();
 
-// ─── Security middleware ────────────────────────────────────────────────────
+// Security middleware
 app.use(helmet());
 
 app.use(
@@ -27,7 +27,7 @@ app.use(
   }),
 );
 
-// ─── Rate limiting ──────────────────────────────────────────────────────────
+// Rate limiting
 const limiter = rateLimit({
   windowMs: env.RATE_LIMIT_WINDOW_MS,
   max: env.RATE_LIMIT_MAX,
@@ -41,16 +41,16 @@ const limiter = rateLimit({
 
 app.use("/api", limiter);
 
-// ─── Request parsing ────────────────────────────────────────────────────────
+// Request parsing
 app.use(express.json({ limit: "10kb" })); // Guard against huge payloads
 app.use(express.urlencoded({ extended: true }));
 
-// ─── HTTP request logging ───────────────────────────────────────────────────
+// HTTP request logging
 if (env.NODE_ENV !== "test") {
   app.use(morgan(env.NODE_ENV === "development" ? "dev" : "combined"));
 }
 
-// ─── Health check ───────────────────────────────────────────────────────────
+// Health check
 app.get("/health", (_req: Request, res: Response) => {
   res.status(200).json({
     status: "ok",
@@ -59,7 +59,6 @@ app.get("/health", (_req: Request, res: Response) => {
   });
 });
 
-// ─── API routes ─────────────────────────────────────────────────────────────
 const API_PREFIX = "/api/v1";
 
 app.use(`${API_PREFIX}/auth`, authRoutes);
@@ -67,7 +66,6 @@ app.use(`${API_PREFIX}/users`, usersRoutes);
 app.use(`${API_PREFIX}/records`, recordsRoutes);
 app.use(`${API_PREFIX}/dashboard`, dashboardRoutes);
 
-// ─── 404 handler ────────────────────────────────────────────────────────────
 app.use((_req: Request, res: Response) => {
   res.status(404).json({
     success: false,
@@ -75,7 +73,6 @@ app.use((_req: Request, res: Response) => {
   });
 });
 
-// ─── Global error handler (must be last) ────────────────────────────────────
 app.use(errorHandler);
 
 export default app;
